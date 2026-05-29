@@ -4,14 +4,23 @@ FROM jenkins/jenkins:lts-jdk17
 
 USER root
 
-# docker CLI (คุยกับ docker daemon ของ host ผ่าน socket ที่ mount เข้ามา) + docker compose v2
-RUN apt-get update \
- && apt-get install -y --no-install-recommends docker.io curl \
- && rm -rf /var/lib/apt/lists/* \
- && mkdir -p /usr/local/lib/docker/cli-plugins \
- && curl -SL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-$(uname -m)" \
-      -o /usr/local/lib/docker/cli-plugins/docker-compose \
- && chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+ARG DOCKER_VER=27.3.1
+ARG COMPOSE_VER=2.29.7
+
+# โหลด docker CLI (binary static) + docker compose v2 ตรงจาก official —
+# วิธีนี้ชัวร์กว่า apt และ `docker --version` ท้าย RUN จะทำให้ build ล้มทันทีถ้าโหลดไม่สำเร็จ
+RUN set -eux; \
+    apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*; \
+    arch="$(uname -m)"; \
+    curl -fsSL "https://download.docker.com/linux/static/stable/${arch}/docker-${DOCKER_VER}.tgz" -o /tmp/docker.tgz; \
+    tar -xzf /tmp/docker.tgz -C /usr/local/bin --strip-components=1 docker/docker; \
+    rm /tmp/docker.tgz; \
+    mkdir -p /usr/local/lib/docker/cli-plugins; \
+    curl -fsSL "https://github.com/docker/compose/releases/download/v${COMPOSE_VER}/docker-compose-linux-${arch}" \
+         -o /usr/local/lib/docker/cli-plugins/docker-compose; \
+    chmod +x /usr/local/lib/docker/cli-plugins/docker-compose; \
+    docker --version; \
+    docker compose version
 
 # ติดตั้ง plugins ตามรายการ
 COPY plugins.txt /usr/share/jenkins/ref/plugins.txt
