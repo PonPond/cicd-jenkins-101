@@ -17,6 +17,11 @@ production โดยบุคคล
 ตัวแอปพลิเคชันถูกออกแบบให้เรียบง่ายโดยตั้งใจ เนื่องจากจุดสำคัญของโปรเจกต์นี้อยู่ที่
 **delivery pipeline** มิใช่ตัวแอปพลิเคชัน
 
+<p align="center">
+  <img src="docs/pipeline.gif" alt="แอนิเมชัน Jenkins pipeline — push → lint → test → security → k6 → build → deploy staging → approve → deploy prod" width="900">
+  <br><sub>Jenkins ทำทั้ง CI และ CD — แต่ละ stage ผ่านแล้วติด ✓ เขียว มีด่าน Approve ก่อนขึ้น production</sub>
+</p>
+
 ## ภาพรวม pipeline
 
 ```
