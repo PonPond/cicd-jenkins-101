@@ -1,0 +1,9 @@
+# plugins ที่จำเป็นสำหรับ pipeline + JCasC + Job DSL
+configuration-as-code
+job-dsl
+workflow-aggregator
+pipeline-stage-view
+git
+docker-workflow
+credentials-binding
+ws-cleanup

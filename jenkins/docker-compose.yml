@@ -1,0 +1,35 @@
+# ยก Jenkins บนเครื่องสำหรับเดโม:  make jenkins-up   (หรือ docker compose up -d --build)
+# เปิด UI ที่ http://localhost:8088  (admin / admin)
+#
+# หมายเหตุ (เดโมบนเครื่อง):
+#   - controller รันด้วย user root + mount docker.sock เพื่อให้ build/push image ได้
+#     (เป็นความสะดวกสำหรับ local เท่านั้น ไม่ใช่แนวทางสำหรับ production)
+#   - ขั้น Build & Push และ Promote ต้องมี credential `github-pat` (ตั้งผ่าน env GH_TOKEN
+#     หรือเพิ่มใน UI: Manage Jenkins → Credentials)
+
+services:
+  jenkins:
+    build: .
+    container_name: jenkins
+    user: root
+    restart: unless-stopped
+    ports:
+      - "8088:8080"
+    environment:
+      JENKINS_ADMIN_ID: admin
+      JENKINS_ADMIN_PASSWORD: admin
+      # ส่ง PAT เข้าไปเป็น credential github-pat โดยอัตโนมัติ (ไม่บังคับ):
+      #   GH_TOKEN=ghp_xxx make jenkins-up
+      GH_TOKEN: "${GH_TOKEN:-changeme}"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./casc.yaml:/var/jenkins_conf/casc.yaml:ro
+    networks: [jenkins]
+
+networks:
+  jenkins:
+    name: jenkins
+
+volumes:
+  jenkins_home:

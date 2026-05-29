@@ -1,0 +1,26 @@
+{
+  "name": "cicd-gitops-jenkins-101",
+  "version": "1.0.0",
+  "description": "Sample Node service demonstrating a production-grade CI/CD + GitOps pipeline",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test --experimental-test-coverage",
+    "test:ci": "node --test --experimental-test-coverage --test-reporter=spec",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "prom-client": "^15.1.3"
+  },
+  "devDependencies": {
+    "eslint": "^9.17.0"
+  },
+  "license": "MIT"
+}
