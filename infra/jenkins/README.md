@@ -1,10 +1,8 @@
 # Jenkins (infra)
 
-ชุด docker compose สำหรับ **ลง Jenkins บนเซิร์ฟเวอร์จริง** — มี docker CLI +
-docker compose + plugins + JCasC ติดมาในตัว และออกแบบให้ **ข้อมูลไม่หายแม้ลบ volume**
-
-> ต่างจากโฟลเดอร์ [`../../jenkins/`](../../jenkins) ที่ไว้เดโม pipeline บนเครื่อง —
-> โฟลเดอร์นี้คือ "ตัว Jenkins server" ที่เอาไปรันจริง
+ชุด docker compose แบบ standalone สำหรับ **ลง Jenkins บนเซิร์ฟเวอร์จริง** — มี
+docker CLI + docker compose + plugins + JCasC ติดมาในตัว และออกแบบให้
+**ข้อมูลไม่หายแม้ลบ volume** ก๊อปโฟลเดอร์นี้ทั้งก้อนขึ้นเซิร์ฟเวอร์แล้วรันได้เลย
 
 ## ⭐ ทำไมลบ volume แล้วข้อมูลไม่หาย
 
@@ -74,6 +72,38 @@ tar czf jenkins-backup-$(date +%F).tgz -C "$JENKINS_HOME_DIR" .
 ```bash
 docker compose up -d --build      # ข้อมูลใน bind mount คงอยู่ครบ
 ```
+
+## จำกัดการเข้าถึง — ไม่ให้ IP ข้างนอกเข้าถึง URL
+
+โดยปริยายไฟล์นี้ผูกพอร์ตไว้กับ `127.0.0.1` (`BIND_ADDR=127.0.0.1`) แล้ว →
+**Jenkins ฟังเฉพาะ loopback ของเซิร์ฟเวอร์ IP ข้างนอกต่อไม่ได้** มี 3 ระดับให้เลือก:
+
+**1) ผูกกับ localhost + SSH tunnel (ง่าย+ปลอดภัยสุด สำหรับแอดมินคนเดียว)**
+- `.env` ตั้ง `BIND_ADDR=127.0.0.1` (ค่าเริ่มต้น) → `docker compose up -d`
+- เข้าใช้งานจากเครื่องเรา ผ่าน tunnel:
+  ```bash
+  ssh -L 8080:localhost:8080 user@your-server
+  # แล้วเปิดเบราว์เซอร์ที่ http://localhost:8080
+  ```
+- พอร์ต 8080 ไม่เคยโผล่ออกเน็ตเลย ไม่ต้องตั้งไฟร์วอลล์เพิ่ม
+
+**2) ไฟร์วอลล์ — เปิดเฉพาะ IP ที่อนุญาต** (ถ้าจำเป็นต้อง bind 0.0.0.0)
+```bash
+# ufw (Ubuntu)
+sudo ufw default deny incoming
+sudo ufw allow from <office-ip> to any port 8080 proto tcp
+sudo ufw enable
+```
+- บนคลาวด์ใช้ Security Group / Firewall rule จำกัด source IP แทนก็ได้
+- ⚠️ ระวัง: ถ้า `BIND_ADDR=0.0.0.0` Docker จะเขียน iptables ลง chain `DOCKER` ซึ่ง **ข้าม ufw** ได้ —
+  ปลอดภัยกว่าคือคง `BIND_ADDR=127.0.0.1` แล้วเปิดสู่ภายนอกผ่าน reverse proxy เท่านั้น
+
+**3) Reverse proxy + HTTPS + allowlist** (สำหรับเปิดสาธารณะจริง)
+- คง `BIND_ADDR=127.0.0.1` (แอปฟังแค่ในเครื่อง) แล้วให้ Caddy/Nginx/Traefik ฟัง 443
+- ที่ proxy ใส่ TLS + (ถ้าต้องการ) `allow <ip>; deny all;` หรือ basic-auth ชั้นหน้า
+
+> สรุปคำตอบสั้น ๆ: คง `BIND_ADDR=127.0.0.1` ไว้ (ตั้งให้แล้ว) แล้วเข้าผ่าน **SSH tunnel** —
+> เป็นวิธีที่ IP ข้างนอกเข้าไม่ได้แน่นอน ไม่ต้องพึ่งไฟร์วอลล์
 
 ## หมายเหตุด้านความปลอดภัย (production)
 
