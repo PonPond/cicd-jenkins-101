@@ -1,0 +1,12 @@
+# plugins พื้นฐานสำหรับ Jenkins server (pipeline + JCasC + git + docker + เครื่องมือทั่วไป)
+configuration-as-code
+job-dsl
+workflow-aggregator
+pipeline-stage-view
+git
+github
+docker-workflow
+credentials-binding
+timestamper
+ws-cleanup
+matrix-auth

@@ -1,0 +1,47 @@
+# Jenkins Configuration as Code (JCasC)
+# config ของ Jenkins เป็นโค้ด → ต่อให้สร้าง container ใหม่หมด ก็ได้ค่าเดิมกลับมา
+# (คู่กับ bind mount ที่เก็บ build history/credentials store → ครบทั้งสองชั้น)
+jenkins:
+  systemMessage: "Jenkins (infra) — managed by docker compose + JCasC"
+  numExecutors: 2
+  mode: NORMAL
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "${JENKINS_ADMIN_ID}"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+security:
+  globalJobDslSecurityConfiguration:
+    useScriptSecurity: false   # ให้ Job DSL จาก JCasC รันได้เลย (config มาจากเราเอง)
+
+unclassified:
+  location:
+    url: "${JENKINS_URL}"
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              scope: GLOBAL
+              id: "github-pat"
+              username: "${GITHUB_USER:-git}"
+              password: "${GH_TOKEN:-changeme}"
+              description: "GitHub PAT — clone repo private + push image ขึ้น GHCR (ตั้งค่าใน .env)"
+
+# เพิ่ม pipeline job ของคุณที่นี่ได้ (ผ่าน Job DSL) เช่น:
+# jobs:
+#   - script: >
+#       pipelineJob('my-app') {
+#         definition {
+#           cpsScm {
+#             scm { git { remote { url('https://github.com/OWNER/REPO.git') } branches('main') } }
+#             scriptPath('Jenkinsfile')
+#           }
+#         }
+#       }

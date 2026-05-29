@@ -1,0 +1,3 @@
+# อย่า commit ค่าจริงและข้อมูล Jenkins
+.env
+data/
