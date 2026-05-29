@@ -1,0 +1,22 @@
+# Deploy spec แบบไม่ใช้ Kubernetes — รันแอปเป็น Docker container ธรรมดา
+# Jenkins ใช้ไฟล์เดียวกันนี้ deploy ทั้ง staging และ production โดยแยกด้วย env:
+#   APP_IMAGE = image:tag ที่จะรัน (เช่น ghcr.io/ponpond/cicd-jenkins-101:sha-abc1234)
+#   APP_ENV   = staging | production
+#   HOST_PORT = พอร์ตบนเครื่อง host
+#
+# ในชีวิตจริง production มักอยู่คนละ host — ชี้ docker ไปเครื่องปลายทางได้ด้วย
+# DOCKER_HOST=ssh://user@prod-server (ไม่ต้องมี Kubernetes)
+
+services:
+  app:
+    image: ${APP_IMAGE:-ghcr.io/ponpond/cicd-jenkins-101:latest}
+    environment:
+      - NODE_ENV=${APP_ENV:-staging}
+    ports:
+      - "${HOST_PORT:-3001}:3000"
+    restart: unless-stopped
+
+# ตั้งชื่อ network ตาม env เพื่อให้ health check หาเจอแน่นอน (cicd-jenkins-101-staging ฯลฯ)
+networks:
+  default:
+    name: cicd-jenkins-101-${APP_ENV:-staging}

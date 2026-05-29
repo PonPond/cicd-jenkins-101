@@ -32,7 +32,7 @@ credentials:
 jobs:
   - script: >
       pipelineJob('cicd-jenkins-101') {
-        description('CI/CD: lint → test → security → k6 → build → push GHCR → deploy staging (kubectl)')
+        description('CI/CD: lint → test → security → k6 → build → push GHCR → deploy staging (docker)')
         definition {
           cpsScm {
             scm {

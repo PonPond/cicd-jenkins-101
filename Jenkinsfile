@@ -1,10 +1,10 @@
-// CI/CD pipeline (declarative) — Jenkins ทำทั้ง CI และ CD (push-based deploy)
-// Jenkins build/test/scan → push image ขึ้น GHCR → deploy ลง cluster เองด้วย kubectl
+// CI/CD pipeline (declarative) — Jenkins ทำทั้ง CI และ CD แบบ "ไม่ใช้ Kubernetes"
+// Jenkins build/test/scan → push image ขึ้น GHCR → deploy เป็น Docker container ด้วย docker compose
 //
 // ต้องมี credential ใน Jenkins:
 //   - github-pat : GitHub Personal Access Token (scope: write:packages) สำหรับ push image ขึ้น GHCR
-//   - kubeconfig : Secret file = kubeconfig ของ cluster ปลายทาง สำหรับ kubectl deploy
 //
+// ขั้น deploy ใช้ docker socket ที่ mount เข้ามา (ไม่ต้องมี kubeconfig / ไม่ต้องมี cluster)
 // ดูวิธียก Jenkins บนเครื่อง: jenkins/docker-compose.yml (หรือ `make jenkins-up`)
 
 pipeline {
@@ -121,26 +121,33 @@ pipeline {
       }
     }
 
-    // --- CD: Jenkins deploy ลง staging เองด้วย kubectl (push-based) ---
+    // --- CD: Jenkins deploy staging เป็น Docker container (ไม่ใช้ k8s) ---
     stage('Deploy to staging') {
       steps {
-        withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-          sh '''
-            set -e
-            # ชี้ overlay ให้ใช้ image tag ที่เพิ่ง build
-            ( cd k8s/overlays/staging && kustomize edit set image app=${IMAGE}:${TAG} )
-            kubectl create namespace demo-staging --dry-run=client -o yaml | kubectl apply -f -
-            kustomize build k8s/overlays/staging | kubectl apply -f -
-            kubectl -n demo-staging rollout status deploy/cicd-jenkins-101-staging --timeout=180s
-          '''
-        }
+        sh '''
+          set -e
+          export APP_IMAGE=${IMAGE}:${TAG} APP_ENV=staging HOST_PORT=3001
+          docker compose -p cicd-jenkins-101-staging -f deploy/docker-compose.yml up -d
+
+          # health check ผ่าน network ของ compose (curl ไปที่ service "app")
+          net="cicd-jenkins-101-staging"
+          ok=false
+          for i in $(seq 1 20); do
+            if docker run --rm --network "$net" curlimages/curl:8.11.1 \
+                 -fsS http://app:3000/healthz >/dev/null 2>&1; then ok=true; break; fi
+            sleep 1
+          done
+          [ "$ok" = true ] || { echo "health check ไม่ผ่าน"; \
+            docker compose -p cicd-jenkins-101-staging -f deploy/docker-compose.yml logs; exit 1; }
+          echo "staging healthy (host port 3001)"
+        '''
       }
     }
   }
 
   post {
     success {
-      echo "สำเร็จ: deploy ${IMAGE}:${TAG} ลง namespace demo-staging แล้ว"
+      echo "สำเร็จ: deploy ${IMAGE}:${TAG} เป็น container staging (port 3001) แล้ว"
     }
     failure {
       echo "ล้มเหลว: pipeline ไม่ผ่าน — staging ยังไม่ถูกอัปเดต"

@@ -1,4 +1,3 @@
-CLUSTER ?= demo
 # Local image tag (must be lowercase). The registry image name used in CI is
 # derived in the Jenkinsfile.
 IMAGE   ?= cicd-jenkins-101:dev
@@ -56,31 +55,23 @@ k6-load: ## k6 load test / perf gate
 k6-stress: ## k6 stress test
 	k6 run tests/k6/stress.js
 
-## --- kubernetes (push deploy) ---
-.PHONY: cluster
-cluster: ## Create a local kind cluster
-	kind create cluster --name $(CLUSTER)
-
-.PHONY: load-image
-load-image: docker-build ## Load the local image into kind (offline use)
-	kind load docker-image $(IMAGE) --name $(CLUSTER)
-
+## --- deploy (Docker container, ไม่ใช้ k8s) ---
 .PHONY: deploy-staging
-deploy-staging: ## Deploy the staging overlay with kubectl
-	kubectl create namespace demo-staging --dry-run=client -o yaml | kubectl apply -f -
-	kustomize build k8s/overlays/staging | kubectl apply -f -
-	kubectl -n demo-staging rollout status deploy/cicd-jenkins-101-staging --timeout=180s
+deploy-staging: docker-build ## Deploy staging as a Docker container (host port 3001)
+	APP_IMAGE=$(IMAGE) APP_ENV=staging HOST_PORT=3001 \
+	  docker compose -p cicd-jenkins-101-staging -f deploy/docker-compose.yml up -d
+	@echo "staging:  http://localhost:3001/healthz"
 
 .PHONY: deploy-production
-deploy-production: ## Deploy the production overlay with kubectl
-	kubectl create namespace demo-production --dry-run=client -o yaml | kubectl apply -f -
-	kustomize build k8s/overlays/production | kubectl apply -f -
-	kubectl -n demo-production rollout status deploy/cicd-jenkins-101-production --timeout=180s
+deploy-production: ## Deploy production as a Docker container (host port 3002)
+	APP_IMAGE=$(IMAGE) APP_ENV=production HOST_PORT=3002 \
+	  docker compose -p cicd-jenkins-101-production -f deploy/docker-compose.yml up -d
+	@echo "production:  http://localhost:3002/healthz"
+
+.PHONY: undeploy
+undeploy: ## Stop and remove staging + production containers
+	-docker compose -p cicd-jenkins-101-staging -f deploy/docker-compose.yml down
+	-docker compose -p cicd-jenkins-101-production -f deploy/docker-compose.yml down
 
 .PHONY: demo
-demo: cluster deploy-staging ## One-shot: kind cluster + deploy staging (pulls image from GHCR)
-	@echo "Staging deployed to namespace demo-staging"
-
-.PHONY: clean
-clean: ## Delete the kind cluster
-	kind delete cluster --name $(CLUSTER)
+demo: deploy-staging ## One-shot: build + run staging container on :3001

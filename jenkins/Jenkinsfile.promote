@@ -1,9 +1,7 @@
-// Promote ขึ้น production แบบตั้งใจ — Jenkins deploy production เองด้วย kubectl (push-based)
+// Promote ขึ้น production แบบตั้งใจ — Jenkins deploy production เป็น Docker container (ไม่ใช้ k8s)
 //
 // ด่านอนุมัติโดยบุคคล = `input` step — pipeline จะหยุดรอจนกว่าจะมีคนกด Promote
-//
-// ต้องมี credential:
-//   - kubeconfig : Secret file = kubeconfig ของ cluster ปลายทาง
+// ใช้ docker socket deploy ตรง (ไม่ต้องมี kubeconfig / cluster)
 
 pipeline {
   agent any
@@ -44,20 +42,27 @@ pipeline {
 
     stage('Deploy to production') {
       steps {
-        withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-          sh '''
-            set -e
-            ( cd k8s/overlays/production && kustomize edit set image app=${IMAGE}:${IMAGE_TAG} )
-            kubectl create namespace demo-production --dry-run=client -o yaml | kubectl apply -f -
-            kustomize build k8s/overlays/production | kubectl apply -f -
-            kubectl -n demo-production rollout status deploy/cicd-jenkins-101-production --timeout=180s
-          '''
-        }
+        sh '''
+          set -e
+          export APP_IMAGE=${IMAGE}:${IMAGE_TAG} APP_ENV=production HOST_PORT=3002
+          docker compose -p cicd-jenkins-101-production -f deploy/docker-compose.yml up -d
+
+          net="cicd-jenkins-101-production"
+          ok=false
+          for i in $(seq 1 20); do
+            if docker run --rm --network "$net" curlimages/curl:8.11.1 \
+                 -fsS http://app:3000/healthz >/dev/null 2>&1; then ok=true; break; fi
+            sleep 1
+          done
+          [ "$ok" = true ] || { echo "health check ไม่ผ่าน"; \
+            docker compose -p cicd-jenkins-101-production -f deploy/docker-compose.yml logs; exit 1; }
+          echo "production healthy (host port 3002)"
+        '''
       }
     }
   }
 
   post {
-    success { echo "deploy production -> ${IMAGE}:${params.IMAGE_TAG} สำเร็จ (namespace demo-production)" }
+    success { echo "deploy production -> ${IMAGE}:${params.IMAGE_TAG} สำเร็จ (container, port 3002)" }
   }
 }
