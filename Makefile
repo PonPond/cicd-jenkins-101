@@ -1,7 +1,7 @@
 CLUSTER ?= demo
 # Local image tag (must be lowercase). The registry image name used in CI is
 # derived in the Jenkinsfile.
-IMAGE   ?= cicd-gitops-jenkins-101:dev
+IMAGE   ?= cicd-jenkins-101:dev
 
 .PHONY: help
 help: ## Show this help
@@ -56,37 +56,30 @@ k6-load: ## k6 load test / perf gate
 k6-stress: ## k6 stress test
 	k6 run tests/k6/stress.js
 
-## --- kubernetes / gitops ---
+## --- kubernetes (push deploy) ---
 .PHONY: cluster
 cluster: ## Create a local kind cluster
 	kind create cluster --name $(CLUSTER)
 
 .PHONY: load-image
-load-image: docker-build ## Load the local image into kind
+load-image: docker-build ## Load the local image into kind (offline use)
 	kind load docker-image $(IMAGE) --name $(CLUSTER)
 
-.PHONY: argocd
-argocd: ## Install ArgoCD into the cluster
-	kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
-	kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-	kubectl -n argocd rollout status deploy/argocd-server --timeout=300s
+.PHONY: deploy-staging
+deploy-staging: ## Deploy the staging overlay with kubectl
+	kubectl create namespace demo-staging --dry-run=client -o yaml | kubectl apply -f -
+	kustomize build k8s/overlays/staging | kubectl apply -f -
+	kubectl -n demo-staging rollout status deploy/cicd-jenkins-101-staging --timeout=180s
 
-.PHONY: deploy
-deploy: ## Register the ArgoCD Applications (staging + production)
-	kubectl apply -f argocd/staging.yaml
-	kubectl apply -f argocd/production.yaml
-
-.PHONY: argocd-password
-argocd-password: ## Print the initial ArgoCD admin password
-	@kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
-
-.PHONY: argocd-ui
-argocd-ui: ## Port-forward the ArgoCD UI to https://localhost:8080
-	kubectl -n argocd port-forward svc/argocd-server 8080:443
+.PHONY: deploy-production
+deploy-production: ## Deploy the production overlay with kubectl
+	kubectl create namespace demo-production --dry-run=client -o yaml | kubectl apply -f -
+	kustomize build k8s/overlays/production | kubectl apply -f -
+	kubectl -n demo-production rollout status deploy/cicd-jenkins-101-production --timeout=180s
 
 .PHONY: demo
-demo: cluster argocd deploy ## One-shot: kind cluster + ArgoCD + Applications
-	@echo "Open the UI:  make argocd-ui   (admin password: make argocd-password)"
+demo: cluster deploy-staging ## One-shot: kind cluster + deploy staging (pulls image from GHCR)
+	@echo "Staging deployed to namespace demo-staging"
 
 .PHONY: clean
 clean: ## Delete the kind cluster

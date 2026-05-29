@@ -1,12 +1,12 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: cicd-gitops-jenkins-101
+  name: cicd-jenkins-101
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: cicd-gitops-jenkins-101
+    name: cicd-jenkins-101
   minReplicas: 2
   maxReplicas: 6
   metrics:

@@ -1,7 +1,9 @@
-// Promote ขึ้น production แบบตั้งใจ (เทียบเท่า .github/workflows/promote-prod.yaml)
+// Promote ขึ้น production แบบตั้งใจ — Jenkins deploy production เองด้วย kubectl (push-based)
 //
-// ด่านอนุมัติโดยบุคคล = `input` step (คู่ขนานกับ GitHub Environment required reviewers)
-// production ฝั่ง ArgoCD ตั้งเป็น manual-sync จึงต้องไปกด Sync ใน ArgoCD อีกครั้งหลัง commit
+// ด่านอนุมัติโดยบุคคล = `input` step — pipeline จะหยุดรอจนกว่าจะมีคนกด Promote
+//
+// ต้องมี credential:
+//   - kubeconfig : Secret file = kubeconfig ของ cluster ปลายทาง
 
 pipeline {
   agent any
@@ -13,12 +15,11 @@ pipeline {
 
   options {
     timestamps()
-    timeout(time: 1, unit: 'HOURS')   // รอการอนุมัติได้สูงสุด 1 ชม.
+    timeout(time: 1, unit: 'HOURS')
   }
 
   environment {
-    IMAGE    = 'ghcr.io/ponpond/cicd-gitops-jenkins-101'
-    REPO_URL = 'github.com/ponpond/cicd-gitops-jenkins-101.git'
+    IMAGE = 'ghcr.io/ponpond/cicd-jenkins-101'
   }
 
   stages {
@@ -32,7 +33,7 @@ pipeline {
       }
     }
 
-    // ด่านอนุมัติโดยบุคคล — pipeline จะหยุดรอจนกว่าจะมีคนกด Promote
+    // ด่านอนุมัติโดยบุคคล
     stage('Approval') {
       steps {
         timeout(time: 1, unit: 'HOURS') {
@@ -41,18 +42,15 @@ pipeline {
       }
     }
 
-    stage('Bump production overlay') {
+    stage('Deploy to production') {
       steps {
-        sh 'cd gitops/overlays/production && kustomize edit set image app=${IMAGE}:${IMAGE_TAG}'
-        withCredentials([usernamePassword(credentialsId: 'github-pat',
-                         usernameVariable: 'GH_USER', passwordVariable: 'GH_TOKEN')]) {
+        withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
           sh '''
             set -e
-            git config user.name  "jenkins-bot"
-            git config user.email "jenkins-bot@users.noreply.github.com"
-            git add gitops/overlays/production/kustomization.yaml
-            git commit -m "chore(deploy): production -> ${IMAGE_TAG}"
-            git push "https://${GH_USER}:${GH_TOKEN}@${REPO_URL}" HEAD:main
+            ( cd k8s/overlays/production && kustomize edit set image app=${IMAGE}:${IMAGE_TAG} )
+            kubectl create namespace demo-production --dry-run=client -o yaml | kubectl apply -f -
+            kustomize build k8s/overlays/production | kubectl apply -f -
+            kubectl -n demo-production rollout status deploy/cicd-jenkins-101-production --timeout=180s
           '''
         }
       }
@@ -60,8 +58,6 @@ pipeline {
   }
 
   post {
-    success {
-      echo "bump production -> ${IMAGE}:${params.IMAGE_TAG} แล้ว — ไปกด Sync ใน ArgoCD (production = manual-sync)"
-    }
+    success { echo "deploy production -> ${IMAGE}:${params.IMAGE_TAG} สำเร็จ (namespace demo-production)" }
   }
 }

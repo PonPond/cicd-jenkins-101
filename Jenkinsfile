@@ -1,9 +1,9 @@
-// CI/CD pipeline (declarative) — เทียบเท่า .github/workflows/ci.yaml + build.yaml
-// ของเวอร์ชัน GitHub Actions แต่ทำงานบน Jenkins
+// CI/CD pipeline (declarative) — Jenkins ทำทั้ง CI และ CD (push-based deploy)
+// Jenkins build/test/scan → push image ขึ้น GHCR → deploy ลง cluster เองด้วย kubectl
 //
 // ต้องมี credential ใน Jenkins:
-//   - github-pat : GitHub Personal Access Token (scope: repo + write:packages)
-//                  ใช้ทั้งตอน push image ขึ้น GHCR และ commit bump กลับเข้า git
+//   - github-pat : GitHub Personal Access Token (scope: write:packages) สำหรับ push image ขึ้น GHCR
+//   - kubeconfig : Secret file = kubeconfig ของ cluster ปลายทาง สำหรับ kubectl deploy
 //
 // ดูวิธียก Jenkins บนเครื่อง: jenkins/docker-compose.yml (หรือ `make jenkins-up`)
 
@@ -18,12 +18,11 @@ pipeline {
 
   environment {
     REGISTRY = 'ghcr.io'
-    IMAGE    = 'ghcr.io/ponpond/cicd-gitops-jenkins-101'
-    REPO_URL = 'github.com/ponpond/cicd-gitops-jenkins-101.git'
+    IMAGE    = 'ghcr.io/ponpond/cicd-jenkins-101'
   }
 
   stages {
-    // คำนวณ tag จาก commit (เทียบเท่า sha-${GITHUB_SHA::7} ใน Actions)
+    // คำนวณ tag จาก commit
     stage('Prepare') {
       steps {
         script {
@@ -33,7 +32,7 @@ pipeline {
       }
     }
 
-    // --- ด่านตรวจคุณภาพ (เทียบเท่า ci.yaml) ---
+    // --- ด่านตรวจคุณภาพ ---
     stage('Lint') {
       agent { docker { image 'node:20'; reuseNode true } }
       steps { dir('app') { sh 'npm ci && npm run lint' } }
@@ -101,7 +100,7 @@ pipeline {
       }
     }
 
-    // --- สร้าง artifact: build → push GHCR → สแกน image (เทียบเท่า build.yaml) ---
+    // --- สร้าง artifact: build → push GHCR → สแกน image ---
     stage('Build & Push') {
       steps {
         withCredentials([usernamePassword(credentialsId: 'github-pat',
@@ -122,19 +121,17 @@ pipeline {
       }
     }
 
-    // --- หัวใจ GitOps: bump image tag ใน staging overlay แล้ว commit กลับเข้า git ---
-    stage('Promote staging (GitOps)') {
+    // --- CD: Jenkins deploy ลง staging เองด้วย kubectl (push-based) ---
+    stage('Deploy to staging') {
       steps {
-        sh 'cd gitops/overlays/staging && kustomize edit set image app=${IMAGE}:${TAG}'
-        withCredentials([usernamePassword(credentialsId: 'github-pat',
-                         usernameVariable: 'GH_USER', passwordVariable: 'GH_TOKEN')]) {
+        withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
           sh '''
             set -e
-            git config user.name  "jenkins-bot"
-            git config user.email "jenkins-bot@users.noreply.github.com"
-            git add gitops/overlays/staging/kustomization.yaml
-            git commit -m "chore(deploy): staging -> ${TAG}" || { echo "ไม่มีการเปลี่ยนแปลง"; exit 0; }
-            git push "https://${GH_USER}:${GH_TOKEN}@${REPO_URL}" HEAD:main
+            # ชี้ overlay ให้ใช้ image tag ที่เพิ่ง build
+            ( cd k8s/overlays/staging && kustomize edit set image app=${IMAGE}:${TAG} )
+            kubectl create namespace demo-staging --dry-run=client -o yaml | kubectl apply -f -
+            kustomize build k8s/overlays/staging | kubectl apply -f -
+            kubectl -n demo-staging rollout status deploy/cicd-jenkins-101-staging --timeout=180s
           '''
         }
       }
@@ -143,7 +140,7 @@ pipeline {
 
   post {
     success {
-      echo "สำเร็จ: push ${IMAGE}:${TAG} และ bump staging overlay แล้ว — ArgoCD จะ sync ให้อัตโนมัติ"
+      echo "สำเร็จ: deploy ${IMAGE}:${TAG} ลง namespace demo-staging แล้ว"
     }
     failure {
       echo "ล้มเหลว: pipeline ไม่ผ่าน — staging ยังไม่ถูกอัปเดต"

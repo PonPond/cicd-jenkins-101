@@ -7,10 +7,10 @@ nameSuffix: -staging
 resources:
   - ../../base
 
-# CI auto-bumps this tag on every merge to main, then ArgoCD auto-syncs.
+# Jenkins sets this tag in the "Deploy to staging" stage, then kubectl applies it.
 images:
   - name: app
-    newName: ghcr.io/ponpond/cicd-gitops-jenkins-101
+    newName: ghcr.io/ponpond/cicd-jenkins-101
     newTag: latest
 
 # Staging runs lean.

@@ -1,7 +1,7 @@
 # Jenkins Configuration as Code (JCasC) — ทำให้ Jenkins reproducible
 # เข้าธีม "ทุกอย่างเป็นโค้ด" เดียวกับ pipeline: ลบ container แล้ว build ใหม่ ก็ได้ config เดิม
 jenkins:
-  systemMessage: "cicd-gitops-jenkins-101 — local demo (configured via JCasC)"
+  systemMessage: "cicd-jenkins-101 — local demo (configured via JCasC)"
   numExecutors: 2
   securityRealm:
     local:
@@ -26,18 +26,18 @@ credentials:
               id: "github-pat"
               username: "ponpond"
               password: "${GH_TOKEN:-changeme}"
-              description: "GitHub PAT — push image ขึ้น GHCR และ commit bump กลับเข้า git (scope: repo + write:packages)"
+              description: "GitHub PAT — push image ขึ้น GHCR (scope: write:packages)"
 
 # สร้าง pipeline job อัตโนมัติจาก Jenkinsfile ใน repo (ผ่าน Job DSL)
 jobs:
   - script: >
-      pipelineJob('cicd-gitops-jenkins-101') {
-        description('CI หลัก: lint → test → security → k6 → build → push → bump staging overlay')
+      pipelineJob('cicd-jenkins-101') {
+        description('CI/CD: lint → test → security → k6 → build → push GHCR → deploy staging (kubectl)')
         definition {
           cpsScm {
             scm {
               git {
-                remote { url('https://github.com/ponpond/cicd-gitops-jenkins-101.git') }
+                remote { url('https://github.com/ponpond/cicd-jenkins-101.git') }
                 branches('main')
               }
             }
@@ -55,7 +55,7 @@ jobs:
           cpsScm {
             scm {
               git {
-                remote { url('https://github.com/ponpond/cicd-gitops-jenkins-101.git') }
+                remote { url('https://github.com/ponpond/cicd-jenkins-101.git') }
                 branches('main')
               }
             }

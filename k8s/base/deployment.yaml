@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: cicd-gitops-jenkins-101
+  name: cicd-jenkins-101
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: cicd-gitops-jenkins-101
+      app: cicd-jenkins-101
   template:
     metadata:
       labels:
-        app: cicd-gitops-jenkins-101
+        app: cicd-jenkins-101
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "3000"
